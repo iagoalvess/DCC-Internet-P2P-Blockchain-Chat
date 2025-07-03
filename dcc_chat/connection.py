@@ -1,7 +1,13 @@
 import asyncio
 import struct
+import socket
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.connect(("8.8.8.8", 80))
+local_ip = s.getsockname()[0]
 
+from dcc_chat.messages import print_chats, put_chat_in_queue, periodic_requests, recive_archive_response, send_archive_request, send_archive_response, send_message, send_peer_request, send_to_chats_to_all_peers, verification_check
 from dcc_chat.protocol import (
+    encode_archive_response,
     encode_identify,
     decode_identify,
     encode_peer_request,
@@ -10,9 +16,10 @@ from dcc_chat.protocol import (
     IDENTIFY,
     PEER_REQUEST,
     PEER_LIST,
+    ARCHIVE_REQUEST,
+    ARCHIVE_RESPONSE
 )
 from dcc_chat.config import PORT, PEER_REQUEST_INTERVAL
-
 
 class P2PNode:
     def __init__(self, my_ip, bootstrap_ip=None):
@@ -22,6 +29,8 @@ class P2PNode:
         self.lock = asyncio.Lock()
         self.server = None
         self.background_tasks = set()
+        self.chats = {}
+        self.a = 0
 
     def _create_task(self, coro):
         """Cria, rastreia e agenda a remoção de uma tarefa."""
@@ -33,7 +42,6 @@ class P2PNode:
     async def start(self):
         """Inicia o servidor e as tarefas de background."""
         try:
-            # Armazena a referência do servidor
             self.server = await asyncio.start_server(
                 self.handle_connection, self.my_ip, PORT
             )
@@ -42,7 +50,7 @@ class P2PNode:
             print(f"Erro ao iniciar o servidor: {e}")
             return
 
-        self._create_task(self.periodic_peer_requests())
+        self._create_task(periodic_requests(self))
 
         if self.bootstrap_ip:
             self._create_task(self.connect_to_peer(self.bootstrap_ip))
@@ -51,29 +59,25 @@ class P2PNode:
             await self.server.serve_forever()
 
     async def stop(self):
-        """Para o nó e todas as suas tarefas de forma graciosa."""
         print(f"Desligando o nó {self.my_ip}...")
 
-        # Para de aceitar novas conexões
         if self.server:
             self.server.close()
             await self.server.wait_closed()
 
-        # Cancela todas as tarefas rastreadas
         for task in list(self.background_tasks):
             task.cancel()
 
         if self.background_tasks:
             await asyncio.gather(*self.background_tasks, return_exceptions=True)
 
-        # Fecha todas as conexões de peers
         async with self.lock:
             for writer in self.peers.values():
                 writer.close()
                 try:
                     await writer.wait_closed()
                 except (BrokenPipeError, ConnectionResetError):
-                    pass  # A conexão pode já ter sido fechada
+                    pass 
             self.peers.clear()
 
         print(f"Nó {self.my_ip} desligado.")
@@ -88,17 +92,11 @@ class P2PNode:
         try:
             reader, writer = await asyncio.open_connection(ip, PORT)
 
-            identify_msg = encode_identify(self.my_ip)
-            await self.send_message(writer, identify_msg)
-            print(f"-> Me identifiquei para {ip}")
-
             async with self.lock:
                 self.peers[ip] = writer
 
-            print(f"Conectado com sucesso a {ip}")
-
-            await self.send_peer_request(writer)
-            # Usa o novo método para criar tarefas rastreadas
+            await send_peer_request(writer)
+            await send_archive_request(writer)
             self._create_task(self.listen_to_peer(ip, reader, writer))
 
         except Exception as e:
@@ -140,15 +138,18 @@ class P2PNode:
             while True:
                 msg_type_byte = await reader.readexactly(1)
                 msg_type = struct.unpack("!B", msg_type_byte)[0]
-
+                print(msg_type, 'vmsg_typemsg_typemsg_typemsg_typemsg_typemsg_typemsg_typemsg_typemsg_type')
                 if msg_type == PEER_REQUEST:
-                    print(f"-> Recebido PeerRequest de {ip}")
+                    print(f"===> Recebido PeerRequest de {ip}")
                     async with self.lock:
+                        print(self.peers.keys(), 'self.peers.keys()')
                         response = encode_peer_list(list(self.peers.keys()))
-                    await self.send_message(writer, response)
-                    print(f"<- Enviado PeerList para {ip}")
+                        print(f'enviado para {ip} ===> {response}')
+                    await send_message(writer, response)
+                    print(f"<==== Enviado PeerList para {ip}")
 
                 elif msg_type == PEER_LIST:
+                    print('===>recebido peerList msg')
                     count_data = await reader.readexactly(4)
                     count = struct.unpack("!I", count_data)[0]
                     if count > 0:
@@ -158,10 +159,21 @@ class P2PNode:
                             f"-> Recebido PeerList de {ip} com {count} pares: {new_peers}"
                         )
                         for new_ip in new_peers:
-                            # Usa o novo método para criar tarefas rastreadas
-                            self._create_task(self.connect_to_peer(new_ip))
+                            #self._create_task(self.connect_to_peer(new_ip))
+                            print(f'NÂO CONECTADO COM O {new_ip} POR CAUSA DO NAT')
                     else:
                         print(f"-> Recebido PeerList de {ip} com 0 pares.")
+                elif msg_type == ARCHIVE_REQUEST:
+                    print('===> RECEBIDO ARCHIVE_REQUEST')
+                    await send_archive_response(self.chats, writer)
+                elif msg_type == ARCHIVE_RESPONSE:
+                    print('===> RECEBIDO ARCHIVE_REPONSE')
+                    await recive_archive_response(self,reader)
+                    c = ['(^_^)', '(T_T)', '(O_O)', '(o_-)', '=^.^=']
+                    if self.a < 1:
+                        #await put_chat_in_queue(self.chats, f"Como se chama a pessoa que viu o Thor de perto? Vi-Thor.")
+                        #await send_to_chats_to_all_peers(self)
+                        self.a = self.a + 1
 
         except (
             asyncio.IncompleteReadError,
@@ -176,28 +188,4 @@ class P2PNode:
                     del self.peers[ip]
                     print(f"Par {ip} removido da lista.")
 
-    async def send_message(self, writer: asyncio.StreamWriter, message: bytes):
-        try:
-            writer.write(message)
-            await writer.drain()
-        except (ConnectionResetError, BrokenPipeError) as e:
-            peer_ip = "desconhecido"
-            try:
-                peer_ip = writer.get_extra_info("peername")
-            except:  # noqa: E722
-                pass
-            print(f"Não foi possível enviar mensagem para {peer_ip}: {e}")
-
-    async def send_peer_request(self, writer: asyncio.StreamWriter):
-        await self.send_message(writer, encode_peer_request())
-
-    async def periodic_peer_requests(self):
-        while True:
-            await asyncio.sleep(PEER_REQUEST_INTERVAL)
-            async with self.lock:
-                if not self.peers:
-                    continue
-                peer_writers = list(self.peers.values())
-
-            for writer in peer_writers:
-                await self.send_peer_request(writer)
+    

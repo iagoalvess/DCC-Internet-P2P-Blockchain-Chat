@@ -41,7 +41,7 @@ async def periodic_requests(p2PNode):
                 await send_archive_request(writer)
     
 async def send_archive_response(chats, writer:asyncio.StreamWriter):
-        print(f'===> ARCHIVE RESPONSE to {writer.get_extra_info('peername')}')
+        #print(f'===> ARCHIVE RESPONSE to {writer.get_extra_info('peername')}')
         response = encode_archive_response(chats)
         await send_message(writer, response)
         

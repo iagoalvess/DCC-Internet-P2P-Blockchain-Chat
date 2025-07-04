@@ -3,7 +3,7 @@ import struct
 
 from dcc_chat.messages import (
     periodic_requests,
-    recive_archive_response,
+    receive_archive_response,
     send_archive_request,
     send_archive_response,
     send_message,
@@ -75,7 +75,7 @@ class P2PNode:
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ):
         """Manipula o recebimento de um histórico de chat."""
-        await recive_archive_response(self, reader)
+        await receive_archive_response(self, reader)
 
     def _create_task(self, coro):
         """Cria, rastreia e agenda a remoção de uma tarefa."""

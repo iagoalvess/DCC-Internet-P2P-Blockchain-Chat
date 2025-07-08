@@ -18,7 +18,7 @@ Cada nó da rede P2P opera de forma independente, executando uma instância da c
 * A lógica assíncrona para enviar, receber e processar mensagens.
 * O servidor que escuta por novas conexões de entrada.
 
-O script principal `main.py` é responsável por iniciar o nó, configurar seu endereço IP e, opcionalmente, conectá-lo a um nó de *bootstrap* para ingressar na rede. Que nesse caso foi um servidor disponibilizado pelo professor.
+O script principal `main.py` é responsável por iniciar o nó, configurar seu endereço IP e  conectá-lo a um nó de *bootstrap* para ingressar na rede. Que nesse caso foi um servidor disponibilizado pelo professor.
 
 ---
 
@@ -37,7 +37,7 @@ O script principal `main.py` é responsável por iniciar o nó, configurar seu e
 - A integridade da blockchain é garantida por uma cadeia de hashes **MD5**. Um histórico é considerado válido se, para cada chat, as seguintes condições forem satisfeitas recursivamente:
     - O hash MD5 do último chat na sequência deve começar com **dois bytes nulos** (`0x0000`).
     - Este hash deve ser o resultado do cálculo do MD5 sobre a concatenação dos últimos 20 chats (ou menos, se o histórico for menor), excluindo o campo do próprio hash.
-- Esta regra cria um mecanismo de **prova de trabalho (Proof-of-Work)**, onde adicionar um novo chat requer esforço computacional. A verificação é implementada na função `verification_check`.
+- Esta regra cria um mecanismo de **Proof-of-Work**, onde adicionar um novo chat requer esforço computacional. A verificação é implementada na função `verification_check`.
 
 ### 4. Mineração e Envio de Chats
 - **Mineração**: Para adicionar um novo chat, um nó deve "minerar" um `código de verificação` (um valor aleatório de 16 bytes). O processo consiste em um loop que gera códigos e calcula o hash MD5 da nova cadeia até que um hash válido (começando com `0x0000`) seja encontrado.
@@ -46,7 +46,7 @@ O script principal `main.py` é responsável por iniciar o nó, configurar seu e
 ---
 
 ## Protocolo de Mensagens
-As mensagens trocadas entre os nós seguem um protocolo binário customizado, onde os campos são empacotados usando o módulo `struct` do Python em *network byte order* (big-endian).
+As mensagens trocadas entre os nós seguem um protocolo binário customizado, onde os campos são empacotados usando o módulo `struct` do Python.
 
 * **PeerRequest (`0x01`)**:
     * Nenhum campo adicional. Usada para solicitar a lista de pares.
@@ -72,7 +72,7 @@ As mensagens trocadas entre os nós seguem um protocolo binário customizado, on
 ## Desafios e Soluções Adotadas
 
 ### 1. Gerenciamento de Concorrência
-* **Desafio:** Lidar com múltiplas conexões de rede simultâneas (envio, recebimento e escuta) de forma eficiente e sem conflitos.
+* **Desafio:** Lidar com múltiplas conexões de rede simultâneas (envio, recebimento e escuta) de forma eficiente e sem problemas.
 * **Solução:** Adoção do **`asyncio`**. Em vez de gerenciar threads complexas e locks, um único loop de eventos trata todas as operações de I/O de forma não-bloqueante. O uso de `asyncio.Lock` garante o acesso seguro a estruturas de dados compartilhadas (como a lista de pares e o histórico), prevenindo *race conditions*.
 
 ### 2. Implementação do Proof-of-Work
@@ -88,9 +88,6 @@ As mensagens trocadas entre os nós seguem um protocolo binário customizado, on
 ## Testes Realizados
 Os testes foram focados em validar os principais componentes do sistema em um ambiente de rede local:
 * **Conexão e Descoberta**: Inicialização de um nó e sua conexão a um nó de *bootstrap* para receber a lista de pares.
-* **Sincronização de Histórico**: Verificação de que um novo nó solicita e adota corretamente o histórico de chats mais longo e válido da rede.
-* **Validação da Blockchain**: Testes unitários na função `verification_check` para garantir que históricos válidos são aceitos e inválidos são rejeitados.
-* **Mineração e Propagação**: Execução do processo de mineração para adicionar um novo chat e observação de sua propagação para outros nós na rede local.
 * **Estabilidade**: Simulação com múltiplos nós locais (`127.0.0.1`, `127.0.0.2`, etc.) para verificar a estabilidade das conexões e a consistência do estado distribuído.
 
 ---
